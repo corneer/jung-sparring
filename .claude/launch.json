@@ -6,6 +6,12 @@
       "runtimeExecutable": "/opt/homebrew/bin/npm",
       "runtimeArgs": ["run", "dev", "--workspace=@jung/mobile"],
       "port": 8081
+    },
+    {
+      "name": "jung-api",
+      "runtimeExecutable": "/opt/homebrew/bin/npm",
+      "runtimeArgs": ["run", "dev", "--workspace=@jung/api"],
+      "port": 3000
     }
   ]
 }

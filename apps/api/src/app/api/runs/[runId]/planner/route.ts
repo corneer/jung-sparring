@@ -3,8 +3,11 @@ import { supabase } from "@/lib/supabase";
 import { runPlanner } from "@/lib/agents/orchestrator";
 import type { Client, Run, Signal } from "@jung/types";
 
-export async function POST(_req: NextRequest, { params }: { params: Promise<{ runId: string }> }) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ runId: string }> }) {
   const { runId } = await params;
+  const body = await req.json().catch(() => ({}));
+  const humanDirection: string | undefined = body?.human_direction;
+  const redo: boolean = !!body?.redo;
 
   const { data: run } = await supabase.from("runs").select("*").eq("id", runId).single();
   if (!run) return new Response(JSON.stringify({ error: "Run not found" }), { status: 404 });
@@ -12,6 +15,10 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ ru
   const { data: client } = await supabase
     .from("clients").select("*").eq("id", (run as Run).client_id).single();
   if (!client) return new Response(JSON.stringify({ error: "Client not found" }), { status: 404 });
+
+  if (redo) {
+    await supabase.from("insights").delete().eq("run_id", runId);
+  }
 
   const { data: signals } = await supabase
     .from("signals").select("*").eq("run_id", runId).eq("approved", true);
@@ -29,7 +36,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ ru
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`));
 
       try {
-        const fullText = await runPlanner(client as Client, run as Run, signals as Signal[], send);
+        const fullText = await runPlanner(client as Client, run as Run, signals as Signal[], send, humanDirection);
 
         await supabase.from("insights").insert({
           run_id: runId,

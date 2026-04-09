@@ -170,17 +170,23 @@ export async function runResearcher(
   );
 }
 
+function directionPrefix(humanDirection?: string): string {
+  if (!humanDirection) return "";
+  return `BESTÄLLARENS DIREKTIV: ${humanDirection}\n\n`;
+}
+
 export async function runPlanner(
   client: Client,
   run: Run,
   signals: Signal[],
-  emit: Emit
+  emit: Emit,
+  humanDirection?: string
 ): Promise<string> {
   const signalText = signals.map((s) => s.content).join("\n\n---\n\n");
   return agentLoop(
     "nora",
     loadAgentPrompt("nora"),
-    `KUND: ${client.name} (${client.industry})\nÄMNE: ${run.topic}\n\nGODKÄNDA SIGNALER:\n${signalText}\n\nAnvänd parallel_deep_research för att fördjupa analysen och destillera starka insikter.`,
+    `${directionPrefix(humanDirection)}KUND: ${client.name} (${client.industry})\nÄMNE: ${run.topic}\n\nGODKÄNDA SIGNALER:\n${signalText}\n\nAnvänd parallel_deep_research för att fördjupa analysen och destillera starka insikter.`,
     [parallelDeepResearchTool],
     emit
   );
@@ -189,13 +195,14 @@ export async function runPlanner(
 export async function runCreative(
   client: Client,
   insights: Insight[],
-  emit: Emit
+  emit: Emit,
+  humanDirection?: string
 ): Promise<string> {
   const insightText = insights.map((i) => i.content).join("\n\n---\n\n");
   return agentLoop(
     "hugo",
     loadAgentPrompt("hugo"),
-    `KUND: ${client.name} (${client.industry})\n\nGODKÄNDA INSIKTER:\n${insightText}\n\nGenerera nu konkreta visuella kreativa riktningar.`,
+    `${directionPrefix(humanDirection)}KUND: ${client.name} (${client.industry})\n\nGODKÄNDA INSIKTER:\n${insightText}`,
     [],
     emit
   );
@@ -204,24 +211,25 @@ export async function runCreative(
 export async function runEvaluation(
   ideas: { content: string }[],
   insights: Insight[],
-  emit: Emit
+  emit: Emit,
+  humanDirection?: string
 ): Promise<{ filterOutput: string; opponentOutput: string }> {
   const ideaText = ideas.map((i) => i.content).join("\n\n---\n\n");
   const insightText = insights.map((i) => i.content).join("\n\n---\n\n");
+  const prefix = directionPrefix(humanDirection);
 
-  // Sigge (AI slop filter) and Isak (strategist) run in parallel
   const [filterOutput, opponentOutput] = await Promise.all([
     agentLoop(
       "sigge",
       loadAgentPrompt("sigge"),
-      `IDÉER ATT GRANSKA:\n${ideaText}`,
+      `${prefix}IDÉER ATT GRANSKA:\n${ideaText}`,
       [],
       emit
     ),
     agentLoop(
       "isak",
       loadAgentPrompt("isak"),
-      `INSIKTER:\n${insightText}\n\nIDÉER ATT UTMANA:\n${ideaText}`,
+      `${prefix}INSIKTER:\n${insightText}\n\nIDÉER ATT UTMANA:\n${ideaText}`,
       [],
       emit
     ),

@@ -4,11 +4,21 @@ import { anthropic } from "@/lib/anthropic";
 import { loadAgentPrompt, getTemperature, getModel } from "@/lib/agents/loader";
 import type { Run, Idea, Insight } from "@jung/types";
 
-export async function POST(_req: NextRequest, { params }: { params: Promise<{ runId: string }> }) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ runId: string }> }) {
   const { runId } = await params;
+  const body = await req.json().catch(() => ({}));
+  const humanDirection: string | undefined = body?.human_direction;
+  const redo: boolean = !!body?.redo;
 
   const { data: run } = await supabase.from("runs").select("*").eq("id", runId).single();
   if (!run) return new Response(JSON.stringify({ error: "Run not found" }), { status: 404 });
+
+  if (redo) {
+    const { data: existingIdeas } = await supabase.from("ideas").select("id").eq("run_id", runId);
+    if (existingIdeas?.length) {
+      await supabase.from("evaluations").delete().in("idea_id", existingIdeas.map((i: { id: string }) => i.id));
+    }
+  }
 
   const { data: ideas } = await supabase.from("ideas").select("*").eq("run_id", runId);
   const { data: insights } = await supabase
@@ -25,6 +35,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ ru
 
   const ideaText = (ideas as Idea[]).map((i) => i.content).join("\n\n---\n\n");
   const insightText = (insights as Insight[] ?? []).map((i) => i.content).join("\n\n---\n\n");
+  const directionNote = humanDirection ? `BESTÄLLARENS DIREKTIV: ${humanDirection}\n\n` : "";
 
   const encoder = new TextEncoder();
 
@@ -44,7 +55,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ ru
             max_tokens: 2048,
             temperature: getTemperature("sigge"),
             system: loadAgentPrompt("sigge"),
-            messages: [{ role: "user", content: `IDÉER ATT GRANSKA:\n${ideaText}` }],
+            messages: [{ role: "user", content: `${directionNote}IDÉER ATT GRANSKA:\n${ideaText}` }],
           });
           let text = "";
           for await (const event of s) {
@@ -66,7 +77,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ ru
             messages: [
               {
                 role: "user",
-                content: `INSIKTER:\n${insightText}\n\nIDÉER ATT UTMANA:\n${ideaText}`,
+                content: `${directionNote}INSIKTER:\n${insightText}\n\nIDÉER ATT UTMANA:\n${ideaText}`,
               },
             ],
           });
