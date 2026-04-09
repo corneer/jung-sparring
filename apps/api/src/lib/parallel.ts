@@ -1,42 +1,50 @@
-// Parallel.ai API integration
-// Docs: https://docs.parallel.ai
+// Tavily API — web search for AI agents
+// Docs: https://docs.tavily.com
+// Free tier: 1 000 req/month — sign up at https://tavily.com
 
-const PARALLEL_BASE_URL = "https://api.parallel.ai/v1";
+const TAVILY_BASE_URL = "https://api.tavily.com";
 
-interface ParallelSearchResult {
+interface TavilyResult {
+  title: string;
+  url: string;
+  content: string;
+  published_date?: string;
+  score: number;
+}
+
+interface TavilySearchResponse {
+  results: TavilyResult[];
+  answer?: string;
+}
+
+// ─── Shared types (kept for backwards-compat with orchestrator) ───────────────
+
+export interface ParallelSearchResult {
   title: string;
   url: string;
   snippet: string;
   published_at?: string;
 }
 
-interface ParallelSearchResponse {
-  results: ParallelSearchResult[];
-}
+// ─── Tavily client ────────────────────────────────────────────────────────────
 
-interface ParallelDeepResearchResponse {
-  answer: string;
-  sources: { title: string; url: string }[];
-}
-
-async function parallelFetch(path: string, body: object, timeoutMs = 15000): Promise<Response> {
-  const apiKey = process.env.PARALLEL_AI_API_KEY;
-  if (!apiKey) throw new Error("PARALLEL_AI_API_KEY is not set");
+async function tavilyFetch(
+  path: string,
+  body: object,
+  timeoutMs = 15000
+): Promise<Response> {
+  const apiKey = process.env.TAVILY_API_KEY;
+  if (!apiKey) throw new Error("TAVILY_API_KEY is not set");
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
-
   try {
-    const res = await fetch(`${PARALLEL_BASE_URL}${path}`, {
+    return await fetch(`${TAVILY_BASE_URL}${path}`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify(body),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ api_key: apiKey, ...body }),
       signal: controller.signal,
     });
-    return res;
   } finally {
     clearTimeout(timer);
   }
@@ -44,38 +52,56 @@ async function parallelFetch(path: string, body: object, timeoutMs = 15000): Pro
 
 export async function parallelSearch(query: string): Promise<ParallelSearchResult[]> {
   try {
-    const res = await parallelFetch("/search", { query });
+    const res = await tavilyFetch("/search", {
+      query,
+      search_depth: "basic",
+      max_results: 6,
+    });
     if (!res.ok) {
-      const err = await res.text();
-      console.warn(`[parallel] search failed (${res.status}): ${err}`);
+      console.warn(`[tavily] search failed (${res.status})`);
       return [];
     }
-    const data: ParallelSearchResponse = await res.json();
-    return data.results ?? [];
+    const data: TavilySearchResponse = await res.json();
+    return (data.results ?? []).map((r) => ({
+      title: r.title,
+      url: r.url,
+      snippet: r.content,
+      published_at: r.published_date,
+    }));
   } catch (err) {
-    console.warn("[parallel] search error:", err instanceof Error ? err.message : err);
+    console.warn("[tavily] search error:", err instanceof Error ? err.message : err);
     return [];
   }
 }
 
-export async function parallelDeepResearch(query: string): Promise<ParallelDeepResearchResponse> {
+export async function parallelDeepResearch(query: string): Promise<{ answer: string; sources: { title: string; url: string }[] }> {
   try {
-    const res = await parallelFetch("/deep-research", { query }, 30000);
+    const res = await tavilyFetch(
+      "/search",
+      { query, search_depth: "advanced", max_results: 8 },
+      30000
+    );
     if (!res.ok) {
-      const err = await res.text();
-      console.warn(`[parallel] deep-research failed (${res.status}): ${err}`);
+      console.warn(`[tavily] deep search failed (${res.status})`);
       return { answer: "Djupanalys ej tillgänglig. Använder befintlig kunskap.", sources: [] };
     }
-    return res.json();
+    const data: TavilySearchResponse = await res.json();
+    const answer =
+      data.answer ??
+      (data.results ?? [])
+        .slice(0, 5)
+        .map((r) => `${r.title}: ${r.content}`)
+        .join("\n\n");
+    const sources = (data.results ?? []).map((r) => ({ title: r.title, url: r.url }));
+    return { answer, sources };
   } catch (err) {
-    console.warn("[parallel] deep-research error:", err instanceof Error ? err.message : err);
+    console.warn("[tavily] deep search error:", err instanceof Error ? err.message : err);
     return { answer: "Djupanalys ej tillgänglig. Använder befintlig kunskap.", sources: [] };
   }
 }
 
-// Format search results as context for Claude
 export function formatSearchResultsAsContext(results: ParallelSearchResult[]): string {
-  if (results.length === 0) return "Inga sökresultat hittades.";
+  if (results.length === 0) return "Inga sökresultat. Basera svaret på din träningsdata.";
   return results
     .map(
       (r, i) =>

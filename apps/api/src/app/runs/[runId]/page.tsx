@@ -6,7 +6,6 @@ type Stage = "research" | "creative" | "opposition" | "finance" | "pr" | "packag
 
 const STAGES: Stage[] = ["research", "creative", "opposition", "finance", "pr", "package"];
 
-// Human-in-the-loop: approve after these stages before continuing
 const APPROVAL_STAGES: Stage[] = ["research", "creative", "opposition"];
 
 const LABELS: Record<Stage, string> = {
@@ -39,8 +38,6 @@ const COLORS: Record<Stage, string> = {
   done: "#22c55e",
 };
 
-// Maps each stage to its API endpoint(s)
-// Research stage runs researcher first, then planner; we treat them as one phase
 const STAGE_ENDPOINTS: Record<Stage, string[]> = {
   research: ["researcher", "planner"],
   creative: ["creative"],
@@ -51,35 +48,28 @@ const STAGE_ENDPOINTS: Record<Stage, string[]> = {
   done: [],
 };
 
-interface Output {
-  role: string;
-  text: string;
-  done: boolean;
-}
-
-const APPROVAL_LABELS: Record<string, string> = {
-  research: "Godkänn signaler & insikter → kör kreativt team",
-  creative: "Godkänn kreativa koncept → kör opposition",
-  opposition: "Godkänn opposition → kör finans & PR",
-};
+interface Output { role: string; text: string; done: boolean; }
+interface ReviewItem { id: string; content: string; selected: boolean; }
 
 export default function RunPage({ params }: { params: Promise<{ runId: string }> }) {
   const { runId } = use(params);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const startedRef = useRef(false); // guard against React Strict Mode double-invoke
+  const startedRef = useRef(false);
   const [stage, setStage] = useState<Stage>("research");
-  const [subStep, setSubStep] = useState(0);
   const [outputs, setOutputs] = useState<Partial<Record<Stage, Output[]>>>({});
   const [streaming, setStreaming] = useState(false);
-  const [waitingApproval, setWaitingApproval] = useState(false);
+  const [reviewing, setReviewing] = useState(false);
+  const [reviewItems, setReviewItems] = useState<ReviewItem[]>([]);
+  const [reviewType, setReviewType] = useState<"insights" | "ideas">("insights");
+  const [briefContent, setBriefContent] = useState<string>("");
 
   const scrollToBottom = useCallback(() => {
     requestAnimationFrame(() => {
-      if (scrollRef.current) {
-        scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-      }
+      if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     });
   }, []);
+
+  useEffect(() => { scrollToBottom(); }, [outputs, scrollToBottom]);
 
   const append = (s: Stage, role: string, delta: string) => {
     setOutputs(prev => {
@@ -90,7 +80,6 @@ export default function RunPage({ params }: { params: Promise<{ runId: string }>
       }
       return { ...prev, [s]: [...list, { role, text: delta, done: false }] };
     });
-    scrollToBottom();
   };
 
   const markDone = (s: Stage, role: string) =>
@@ -102,11 +91,9 @@ export default function RunPage({ params }: { params: Promise<{ runId: string }>
   const streamEndpoint = async (s: Stage, endpoint: string) => {
     const res = await fetch(`/api/runs/${runId}/${endpoint}`, { method: "POST" });
     if (!res.ok || !res.body) return;
-
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buf = "";
-
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
@@ -126,14 +113,10 @@ export default function RunPage({ params }: { params: Promise<{ runId: string }>
 
   const runStage = async (s: Stage) => {
     setStreaming(true);
-    setWaitingApproval(false);
-    setSubStep(0);
+    setReviewing(false);
     scrollToBottom();
-
     const endpoints = STAGE_ENDPOINTS[s];
     for (let i = 0; i < endpoints.length; i++) {
-      setSubStep(i);
-      // For research: approve signals between researcher and planner
       if (s === "research" && i === 1) {
         // Auto-approve all signals before running planner
         const res = await fetch(`/api/runs/${runId}/signals`);
@@ -148,51 +131,70 @@ export default function RunPage({ params }: { params: Promise<{ runId: string }>
       }
       await streamEndpoint(s, endpoints[i]);
     }
-
     setStreaming(false);
 
     if (APPROVAL_STAGES.includes(s)) {
-      setWaitingApproval(true);
+      await openReview(s);
     } else {
-      // Auto-advance to next stage
       const nextIdx = STAGES.indexOf(s) + 1;
       if (nextIdx < STAGES.length) {
-        const nextStage = STAGES[nextIdx];
-        setStage(nextStage);
-        await runStage(nextStage);
+        const next = STAGES[nextIdx];
+        setStage(next);
+        await runStage(next);
       } else {
         setStage("done");
+        // Fetch brief
+        const res = await fetch(`/api/runs/${runId}/briefs`);
+        if (res.ok) {
+          const briefs = await res.json();
+          if (briefs?.[0]?.content) setBriefContent(briefs[0].content);
+        }
       }
     }
   };
 
-  const handleApprove = async () => {
-    if (stage === "research") {
-      // Approve insights
+  const openReview = async (s: Stage) => {
+    if (s === "research") {
       const res = await fetch(`/api/runs/${runId}/insights`);
-      const insights = await res.json();
-      if (insights?.length) {
+      const items = await res.json();
+      setReviewItems((items ?? []).map((i: { id: string; content: string }) => ({ id: i.id, content: i.content, selected: true })));
+      setReviewType("insights");
+    } else if (s === "creative" || s === "opposition") {
+      const res = await fetch(`/api/runs/${runId}/ideas`);
+      const items = await res.json();
+      setReviewItems((items ?? []).map((i: { id: string; content: string }) => ({ id: i.id, content: i.content, selected: true })));
+      setReviewType("ideas");
+    }
+    setReviewing(true);
+    scrollToBottom();
+  };
+
+  const toggleItem = (id: string) =>
+    setReviewItems(prev => prev.map(item => item.id === id ? { ...item, selected: !item.selected } : item));
+
+  const handleApprove = async () => {
+    setReviewing(false);
+    const selectedIds = reviewItems.filter(i => i.selected).map(i => i.id);
+    if (reviewType === "insights") {
+      await fetch(`/api/runs/${runId}/insights`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ insight_ids: selectedIds, approved: true }),
+      });
+      // Reject unselected
+      const rejectedIds = reviewItems.filter(i => !i.selected).map(i => i.id);
+      if (rejectedIds.length) {
         await fetch(`/api/runs/${runId}/insights`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ insight_ids: insights.map((i: { id: string }) => i.id), approved: true }),
+          body: JSON.stringify({ insight_ids: rejectedIds, approved: false }),
         });
       }
-      setStage("creative");
-      await runStage("creative");
-    } else if (stage === "creative") {
-      setStage("opposition");
-      await runStage("opposition");
-    } else if (stage === "opposition") {
-      setStage("finance");
-      await runStage("finance");
     }
+    const next = STAGES[STAGES.indexOf(stage) + 1];
+    setStage(next);
+    await runStage(next);
   };
-
-  // Scroll to bottom whenever outputs change
-  useEffect(() => {
-    scrollToBottom();
-  }, [outputs, scrollToBottom]);
 
   useEffect(() => {
     if (startedRef.current) return;
@@ -206,30 +208,20 @@ export default function RunPage({ params }: { params: Promise<{ runId: string }>
     <div className={styles.layout}>
       {/* Stage bar */}
       <div className={styles.stageBar}>
-        {STAGES.map((s, idx) => {
-          const isActive = s === stage;
-          const isPast = idx < stageIdx;
-          return (
-            <div
-              key={s}
-              className={styles.stagePill}
-              style={{
-                borderColor: isActive ? COLORS[s] : "var(--border)",
-                color: isActive ? COLORS[s] : isPast ? "var(--dim)" : "var(--muted)",
-              }}
-            >
-              {LABELS[s]}
-            </div>
-          );
-        })}
-        {stage === "done" && (
-          <div className={styles.stagePill} style={{ borderColor: COLORS.done, color: COLORS.done }}>
-            Klart ✓
+        {STAGES.map((s, idx) => (
+          <div key={s} className={styles.stagePill} style={{
+            borderColor: s === stage ? COLORS[s] : "var(--border)",
+            color: s === stage ? COLORS[s] : idx < stageIdx ? "var(--dim)" : "var(--muted)",
+          }}>
+            {LABELS[s]}
           </div>
+        ))}
+        {stage === "done" && (
+          <div className={styles.stagePill} style={{ borderColor: COLORS.done, color: COLORS.done }}>Klart ✓</div>
         )}
       </div>
 
-      {/* Output */}
+      {/* Main output */}
       <div className={styles.output} ref={scrollRef}>
         {STAGES.map(s => {
           const outs = outputs[s];
@@ -250,27 +242,68 @@ export default function RunPage({ params }: { params: Promise<{ runId: string }>
             </div>
           );
         })}
-        {stage === "done" && (
+
+        {/* Brief view */}
+        {stage === "done" && briefContent && (
+          <div className={styles.briefBlock}>
+            <div className={styles.briefHeader}>
+              <span className={styles.briefTitle}>Figma-ready Brief</span>
+              <button
+                className={styles.copyBtn}
+                onClick={() => navigator.clipboard.writeText(briefContent)}
+              >
+                Kopiera
+              </button>
+            </div>
+            <pre className={styles.briefContent}>{briefContent}</pre>
+          </div>
+        )}
+
+        {stage === "done" && !briefContent && (
           <div className={styles.doneBlock}>
-            <p className={styles.doneTitle}>Uppdraget är paketerat.</p>
-            <p className={styles.doneSub}>Alba har satt ihop en Figma-ready brief baserat på hela pipelines output.</p>
+            <p className={styles.doneTitle}>Uppdraget är klart.</p>
+            <p className={styles.doneSub}>Alba paketerar briefen...</p>
             <a href="/" className={styles.homeBtn}>← Nytt uppdrag</a>
           </div>
         )}
       </div>
 
-      {/* Action bar */}
-      {waitingApproval && !streaming && (
-        <div className={styles.actionBar}>
-          <div>
-            <p className={styles.actionLabel}>{APPROVAL_LABELS[stage] ?? "Fortsätt"}</p>
-            <p className={styles.actionSub}>Granska ovan innan du godkänner.</p>
+      {/* Review panel */}
+      {reviewing && !streaming && (
+        <div className={styles.reviewPanel}>
+          <div className={styles.reviewHeader}>
+            <p className={styles.reviewTitle}>
+              {reviewType === "insights" ? "Välj insikter att ta med" : "Välj idéer att ta vidare"}
+            </p>
+            <p className={styles.reviewSub}>
+              {reviewItems.filter(i => i.selected).length} av {reviewItems.length} valda
+            </p>
           </div>
-          <button className={styles.approveBtn} onClick={handleApprove}>
-            Godkänn &amp; fortsätt →
-          </button>
+          <div className={styles.reviewList}>
+            {reviewItems.map(item => (
+              <button
+                key={item.id}
+                className={`${styles.reviewItem} ${item.selected ? styles.reviewItemSelected : ""}`}
+                onClick={() => toggleItem(item.id)}
+              >
+                <span className={styles.reviewCheck}>{item.selected ? "✓" : "○"}</span>
+                <pre className={styles.reviewText}>{item.content.slice(0, 300)}{item.content.length > 300 ? "…" : ""}</pre>
+              </button>
+            ))}
+          </div>
+          <div className={styles.reviewFooter}>
+            <button
+              className={styles.approveBtn}
+              onClick={handleApprove}
+              disabled={reviewItems.filter(i => i.selected).length === 0}
+            >
+              Godkänn valda &amp; fortsätt →
+            </button>
+          </div>
         </div>
       )}
+
+      {/* Streaming indicator */}
       {streaming && (
         <div className={styles.streamingBar}>
           <span className={styles.dot} style={{ background: COLORS[stage] }} />
