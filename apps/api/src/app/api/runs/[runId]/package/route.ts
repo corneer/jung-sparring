@@ -12,24 +12,34 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ ru
 
   // Gather all pipeline output
   const [
-    { data: signals },
     { data: insights },
     { data: ideas },
+    { data: evaluations },
     { data: financeEvals },
     { data: prEvals },
   ] = await Promise.all([
-    supabase.from("signals").select("*").eq("run_id", runId).eq("approved", true),
     supabase.from("insights").select("*").eq("run_id", runId).eq("approved", true),
     supabase.from("ideas").select("*").eq("run_id", runId),
+    supabase.from("evaluations").select("*").in(
+      "idea_id",
+      (await supabase.from("ideas").select("id").eq("run_id", runId)).data?.map((i: { id: string }) => i.id) ?? []
+    ),
     supabase.from("finance_evaluations").select("*").eq("run_id", runId).order("created_at", { ascending: false }).limit(1),
     supabase.from("pr_evaluations").select("*").eq("run_id", runId).order("created_at", { ascending: false }).limit(1),
   ]);
 
   await supabase.from("runs").update({ status: "packaging" }).eq("id", runId);
 
-  const signalText = (signals as Signal[] ?? []).map((s) => s.content).join("\n\n");
-  const insightText = (insights as Insight[] ?? []).map((i) => `${i.content}\n${i.reasoning}`).join("\n\n---\n\n");
+  const insightText = (insights as Insight[] ?? []).map((i) => i.content).join("\n\n---\n\n");
   const ideaText = (ideas as Idea[] ?? []).map((i) => i.content).join("\n\n---\n\n");
+
+  // Surface Sigge's and Isak's actual critique
+  const evalText = evaluations?.length
+    ? evaluations.map((e: { filter_reasoning: string; opponent_challenge: string }) =>
+        `SIGGES DOM:\n${e.filter_reasoning}\n\nISAKS INVÄNDNING:\n${e.opponent_challenge}`
+      ).join("\n\n---\n\n")
+    : "Ingen oppositionsbedömning tillgänglig.";
+
   const financeText = financeEvals?.[0]
     ? `TILDE (CFO):\n${financeEvals[0].tilde_output}\n\nOTTO (ACCOUNT):\n${financeEvals[0].otto_output}`
     : "Ingen finansbedömning tillgänglig.";
@@ -39,19 +49,19 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ ru
 
   const context = `UPPDRAG: ${run.topic}
 
-## SIGNALER (Finn)
-${signalText}
-
-## INSIKTER (Nora)
+## INSIKTER (Nora — godkända av beställaren)
 ${insightText}
 
-## KREATIVA KONCEPT (Hugo + Tuva)
+## KREATIVT KONCEPT (Hugo)
 ${ideaText}
 
-## FINANSIELL BEDÖMNING
+## OPPOSITIONENS DOM (Sigge + Isak)
+${evalText}
+
+## FINANSIELL BEDÖMNING (Tilde + Otto)
 ${financeText}
 
-## PR-BEDÖMNING
+## PR-BEDÖMNING (Ebbe + Lova + Felix)
 ${prText}`;
 
   const model = getModel();

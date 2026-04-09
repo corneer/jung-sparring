@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState, use, useCallback } from "react";
+import ReactMarkdown from "react-markdown";
 import styles from "./page.module.css";
 
 type Stage = "research" | "creative" | "opposition" | "finance" | "pr" | "package" | "done";
@@ -255,7 +256,9 @@ export default function RunPage({ params }: { params: Promise<{ runId: string }>
                 Kopiera
               </button>
             </div>
-            <pre className={styles.briefContent}>{briefContent}</pre>
+            <div className={styles.briefContent}>
+              <ReactMarkdown>{briefContent}</ReactMarkdown>
+            </div>
           </div>
         )}
 
@@ -287,7 +290,9 @@ export default function RunPage({ params }: { params: Promise<{ runId: string }>
                 onClick={() => toggleItem(item.id)}
               >
                 <span className={styles.reviewCheck}>{item.selected ? "✓" : "○"}</span>
-                <pre className={styles.reviewText}>{item.content.slice(0, 300)}{item.content.length > 300 ? "…" : ""}</pre>
+                <div className={styles.reviewText}>
+                  <ReactMarkdown>{item.content.slice(0, 400) + (item.content.length > 400 ? "\n\n…" : "")}</ReactMarkdown>
+                </div>
               </button>
             ))}
           </div>

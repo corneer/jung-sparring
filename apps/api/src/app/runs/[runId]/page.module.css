@@ -238,14 +238,27 @@
 }
 
 .reviewText {
-  font-family: inherit;
   font-size: 13px;
   line-height: 1.55;
   color: #ccc;
-  white-space: pre-wrap;
-  word-break: break-word;
   flex: 1;
+  min-width: 0;
 }
+
+.reviewText p { margin: 0 0 6px; }
+.reviewText p:last-child { margin-bottom: 0; }
+.reviewText strong { color: #eee; font-weight: 600; }
+.reviewText h1, .reviewText h2, .reviewText h3 {
+  font-size: 13px;
+  font-weight: 700;
+  color: #eee;
+  margin: 8px 0 4px;
+}
+.reviewText ul, .reviewText ol {
+  margin: 4px 0;
+  padding-left: 16px;
+}
+.reviewText li { margin-bottom: 2px; }
 
 .reviewFooter {
   padding: 12px 24px;
@@ -299,12 +312,19 @@
 }
 
 .briefContent {
-  font-family: inherit;
   font-size: 14px;
   line-height: 1.75;
   color: #ddd;
-  white-space: pre-wrap;
-  word-break: break-word;
-  padding: 20px;
-  margin: 0;
+  padding: 24px;
 }
+
+.briefContent p { margin: 0 0 12px; }
+.briefContent p:last-child { margin-bottom: 0; }
+.briefContent strong { color: #fff; font-weight: 600; }
+.briefContent em { color: #bbb; }
+.briefContent h1 { font-size: 18px; font-weight: 700; color: #fff; margin: 0 0 16px; }
+.briefContent h2 { font-size: 15px; font-weight: 700; color: #fff; margin: 20px 0 8px; }
+.briefContent h3 { font-size: 14px; font-weight: 600; color: #eee; margin: 16px 0 6px; }
+.briefContent ul, .briefContent ol { margin: 8px 0 12px; padding-left: 20px; }
+.briefContent li { margin-bottom: 4px; }
+.briefContent hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
