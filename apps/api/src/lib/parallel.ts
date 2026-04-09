@@ -19,37 +19,58 @@ interface ParallelDeepResearchResponse {
   sources: { title: string; url: string }[];
 }
 
-async function parallelFetch(path: string, body: object): Promise<Response> {
+async function parallelFetch(path: string, body: object, timeoutMs = 15000): Promise<Response> {
   const apiKey = process.env.PARALLEL_AI_API_KEY;
   if (!apiKey) throw new Error("PARALLEL_AI_API_KEY is not set");
 
-  return fetch(`${PARALLEL_BASE_URL}${path}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify(body),
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const res = await fetch(`${PARALLEL_BASE_URL}${path}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    return res;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export async function parallelSearch(query: string): Promise<ParallelSearchResult[]> {
-  const res = await parallelFetch("/search", { query });
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Parallel.ai search failed: ${err}`);
+  try {
+    const res = await parallelFetch("/search", { query });
+    if (!res.ok) {
+      const err = await res.text();
+      console.warn(`[parallel] search failed (${res.status}): ${err}`);
+      return [];
+    }
+    const data: ParallelSearchResponse = await res.json();
+    return data.results ?? [];
+  } catch (err) {
+    console.warn("[parallel] search error:", err instanceof Error ? err.message : err);
+    return [];
   }
-  const data: ParallelSearchResponse = await res.json();
-  return data.results;
 }
 
 export async function parallelDeepResearch(query: string): Promise<ParallelDeepResearchResponse> {
-  const res = await parallelFetch("/deep-research", { query });
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Parallel.ai deep research failed: ${err}`);
+  try {
+    const res = await parallelFetch("/deep-research", { query }, 30000);
+    if (!res.ok) {
+      const err = await res.text();
+      console.warn(`[parallel] deep-research failed (${res.status}): ${err}`);
+      return { answer: "Djupanalys ej tillgänglig. Använder befintlig kunskap.", sources: [] };
+    }
+    return res.json();
+  } catch (err) {
+    console.warn("[parallel] deep-research error:", err instanceof Error ? err.message : err);
+    return { answer: "Djupanalys ej tillgänglig. Använder befintlig kunskap.", sources: [] };
   }
-  return res.json();
 }
 
 // Format search results as context for Claude

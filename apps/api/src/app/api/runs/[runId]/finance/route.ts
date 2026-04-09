@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { anthropic } from "@/lib/anthropic";
 import { loadAgentPrompt, getTemperature, getModel } from "@/lib/agents/loader";
-import type { Run, Idea, Insight } from "@jung/types";
+import type { Idea } from "@jung/types";
 
 export async function POST(_req: NextRequest, { params }: { params: Promise<{ runId: string }> }) {
   const { runId } = await params;
@@ -10,22 +10,19 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ ru
   const { data: run } = await supabase.from("runs").select("*").eq("id", runId).single();
   if (!run) return new Response(JSON.stringify({ error: "Run not found" }), { status: 404 });
 
-  const { data: ideas } = await supabase.from("ideas").select("*").eq("run_id", runId);
-  const { data: insights } = await supabase
-    .from("insights")
+  const { data: ideas } = await supabase
+    .from("ideas")
     .select("*")
-    .eq("run_id", runId)
-    .eq("approved", true);
+    .eq("run_id", runId);
 
   if (!ideas || ideas.length === 0) {
     return new Response(JSON.stringify({ error: "No ideas found" }), { status: 400 });
   }
 
-  await supabase.from("runs").update({ status: "evaluating" }).eq("id", runId);
+  await supabase.from("runs").update({ status: "financing" }).eq("id", runId);
 
   const ideaText = (ideas as Idea[]).map((i) => i.content).join("\n\n---\n\n");
-  const insightText = (insights as Insight[] ?? []).map((i) => i.content).join("\n\n---\n\n");
-
+  const model = getModel();
   const encoder = new TextEncoder();
 
   const stream = new ReadableStream({
@@ -35,70 +32,58 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ ru
       };
 
       try {
-        // Run Filter and Opponent in parallel
-        const model = getModel();
-
-        const filterPromise = (async () => {
+        // Run Tilde (CFO) and Otto (Account Director) in parallel
+        const tildePromise = (async () => {
           const s = anthropic.messages.stream({
             model,
             max_tokens: 2048,
-            temperature: getTemperature("sigge"),
-            system: loadAgentPrompt("sigge"),
-            messages: [{ role: "user", content: `IDÉER ATT GRANSKA:\n${ideaText}` }],
+            temperature: getTemperature("tilde"),
+            system: loadAgentPrompt("tilde"),
+            messages: [{ role: "user", content: `IDÉER ATT BEDÖMA FINANSIELLT:\n\n${ideaText}` }],
           });
           let text = "";
           for await (const event of s) {
             if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
               text += event.delta.text;
-              send({ role: "sigge", type: "delta", content: event.delta.text });
+              send({ role: "tilde", type: "delta", content: event.delta.text });
             }
           }
-          send({ role: "sigge", type: "done" });
+          send({ role: "tilde", type: "done" });
           return text;
         })();
 
-        const opponentPromise = (async () => {
+        const ottoPromise = (async () => {
           const s = anthropic.messages.stream({
             model,
             max_tokens: 2048,
-            temperature: getTemperature("isak"),
-            system: loadAgentPrompt("isak"),
-            messages: [
-              {
-                role: "user",
-                content: `INSIKTER:\n${insightText}\n\nIDÉER ATT UTMANA:\n${ideaText}`,
-              },
-            ],
+            temperature: getTemperature("otto"),
+            system: loadAgentPrompt("otto"),
+            messages: [{ role: "user", content: `IDÉER ATT BEDÖMA FRÅN ACCOUNT-PERSPEKTIV:\n\n${ideaText}` }],
           });
           let text = "";
           for await (const event of s) {
             if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
               text += event.delta.text;
-              send({ role: "isak", type: "delta", content: event.delta.text });
+              send({ role: "otto", type: "delta", content: event.delta.text });
             }
           }
-          send({ role: "isak", type: "done" });
+          send({ role: "otto", type: "done" });
           return text;
         })();
 
-        const [filterText, opponentText] = await Promise.all([filterPromise, opponentPromise]);
+        const [tildeText, ottoText] = await Promise.all([tildePromise, ottoPromise]);
 
-        // Save evaluation
-        for (const idea of ideas as Idea[]) {
-          await supabase.from("evaluations").insert({
-            idea_id: idea.id,
-            filter_score: 5, // default score; full parse could extract per-idea scores
-            filter_reasoning: filterText,
-            opponent_challenge: opponentText,
-            survived: true, // user makes final call
-          });
-        }
+        // Save finance evaluation
+        await supabase.from("finance_evaluations").insert({
+          run_id: runId,
+          tilde_output: tildeText,
+          otto_output: ottoText,
+        });
 
-        await supabase.from("runs").update({ status: "done" }).eq("id", runId);
         controller.close();
       } catch (err) {
         const message = err instanceof Error ? err.message : "Unknown error";
-        send({ role: "filter", type: "error", error: message });
+        send({ role: "tilde", type: "error", error: message });
         await supabase.from("runs").update({ status: "error" }).eq("id", runId);
         controller.close();
       }

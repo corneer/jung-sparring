@@ -1,19 +1,46 @@
-export default function Home() {
+import Link from "next/link";
+import { supabase } from "@/lib/supabase";
+import styles from "./page.module.css";
+
+export const dynamic = "force-dynamic";
+
+export default async function ClientsPage() {
+  const { data: clients } = await supabase
+    .from("clients")
+    .select("*")
+    .order("created_at", { ascending: false });
+
   return (
-    <main style={{ padding: "2rem", fontFamily: "monospace" }}>
-      <h1>Jung Sparring API</h1>
-      <p>Available endpoints:</p>
-      <ul>
-        <li>GET/POST /api/clients</li>
-        <li>GET/PUT/DELETE /api/clients/[id]</li>
-        <li>GET/POST /api/runs</li>
-        <li>POST /api/runs/[runId]/researcher (SSE)</li>
-        <li>GET/PATCH /api/runs/[runId]/signals</li>
-        <li>POST /api/runs/[runId]/planner (SSE)</li>
-        <li>GET/PATCH /api/runs/[runId]/insights</li>
-        <li>POST /api/runs/[runId]/creative (SSE)</li>
-        <li>POST /api/runs/[runId]/evaluate (SSE, parallel)</li>
-      </ul>
+    <main className={styles.main}>
+      <div className={styles.header}>
+        <h1 className={styles.title}>Creative Sparring Team</h1>
+        <Link href="/clients/new" className={styles.newBtn}>+ Nytt uppdrag</Link>
+      </div>
+
+      {!clients || clients.length === 0 ? (
+        <p className={styles.empty}>Inga uppdrag än. Skapa ett för att börja.</p>
+      ) : (
+        <div className={styles.grid}>
+          {clients.map((client) => (
+            <div key={client.id} className={styles.card}>
+              <div className={styles.cardBody}>
+                <h2 className={styles.cardTitle}>{client.name}</h2>
+                <p className={styles.cardSub}>{client.industry}</p>
+                {client.competitors?.length > 0 && (
+                  <p className={styles.cardMeta}>
+                    Konkurrenter: {client.competitors.join(", ")}
+                  </p>
+                )}
+              </div>
+              <div className={styles.cardFooter}>
+                <Link href={`/runs/new?client_id=${client.id}&client_name=${encodeURIComponent(client.name)}`} className={styles.runBtn}>
+                  Starta uppdrag →
+                </Link>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </main>
   );
 }

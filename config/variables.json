@@ -1,13 +1,11 @@
 {
   "agency": {
     "name": "Jung Relations",
-    "positioning": "Nordens mest kreativa byrå",
+    "positioning": "Nordens mest kreativa kommunikationsbyrå",
     "language": "Swedish",
     "tone": "Confident, sharp, no bullshit"
   },
   "pipeline": {
-    "max_ideas_per_round": 3,
-    "opposition_rounds": 1,
     "output_format": "Figma-ready brief"
   },
   "agents": {

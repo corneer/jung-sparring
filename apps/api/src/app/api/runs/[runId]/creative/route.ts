@@ -1,21 +1,14 @@
 import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { anthropic } from "@/lib/anthropic";
-import { creativeSystemPrompt } from "@/lib/agents/prompts";
-import type { Client, Run, Insight } from "@jung/types";
+import { loadAgentPrompt, getTemperature, getModel } from "@/lib/agents/loader";
+import type { Run, Insight } from "@jung/types";
 
 export async function POST(_req: NextRequest, { params }: { params: Promise<{ runId: string }> }) {
   const { runId } = await params;
 
   const { data: run } = await supabase.from("runs").select("*").eq("id", runId).single();
   if (!run) return new Response(JSON.stringify({ error: "Run not found" }), { status: 404 });
-
-  const { data: client } = await supabase
-    .from("clients")
-    .select("*")
-    .eq("id", (run as Run).client_id)
-    .single();
-  if (!client) return new Response(JSON.stringify({ error: "Client not found" }), { status: 404 });
 
   const { data: insights } = await supabase
     .from("insights")
@@ -41,9 +34,10 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ ru
         const insightText = (insights as Insight[]).map((i) => i.content).join("\n\n---\n\n");
 
         const claudeStream = anthropic.messages.stream({
-          model: "claude-sonnet-4-6",
+          model: getModel(),
           max_tokens: 4096,
-          system: creativeSystemPrompt(client as Client),
+          temperature: getTemperature("hugo"),
+          system: loadAgentPrompt("hugo"),
           messages: [
             {
               role: "user",

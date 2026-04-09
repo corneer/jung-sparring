@@ -38,7 +38,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ ru
           approved: null,
         });
 
-        send({ role: "planner", type: "done" });
+        send({ role: "nora", type: "done" });
       } catch (err) {
         const message = err instanceof Error ? err.message : "Unknown error";
         send({ role: "planner", type: "error", error: message });

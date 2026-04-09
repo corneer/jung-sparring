@@ -15,6 +15,9 @@ export type RunStatus =
   | "planning"
   | "creating"
   | "evaluating"
+  | "financing"
+  | "pr-ing"
+  | "packaging"
   | "done"
   | "error";
 
@@ -26,7 +29,7 @@ export interface Run {
   created_at: string;
 }
 
-// Signal from Researcher
+// Signal from Finn
 export interface Signal {
   id: string;
   run_id: string;
@@ -36,7 +39,7 @@ export interface Signal {
   created_at: string;
 }
 
-// Insight from Planner
+// Insight from Nora
 export interface Insight {
   id: string;
   run_id: string;
@@ -46,7 +49,7 @@ export interface Insight {
   created_at: string;
 }
 
-// Idea from Creative
+// Idea from Hugo + Tuva
 export interface Idea {
   id: string;
   run_id: string;
@@ -54,7 +57,7 @@ export interface Idea {
   created_at: string;
 }
 
-// Evaluation from AI-slop filter + Opponent
+// Evaluation from opposition agents
 export interface Evaluation {
   id: string;
   idea_id: string;
@@ -64,42 +67,51 @@ export interface Evaluation {
   survived: boolean;
 }
 
-// Streaming chunk types sent from API → client
-// Legacy roles (backward-compatible)
-export type AgentRole =
-  | "researcher"
-  | "planner"
-  | "creative"
-  | "filter"
-  | "opponent";
+// Finance evaluation from Tilde + Otto
+export interface FinanceEvaluation {
+  id: string;
+  run_id: string;
+  tilde_output: string;
+  otto_output: string;
+  created_at: string;
+}
 
-// Named agent keys — maps to /agents/**/*.md files
+// PR evaluation from Ebbe + Lova + Felix
+export interface PrEvaluation {
+  id: string;
+  run_id: string;
+  ebbe_output: string;
+  lova_output: string;
+  felix_output: string;
+  created_at: string;
+}
+
+// Final Figma-ready brief from Alba
+export interface Brief {
+  id: string;
+  run_id: string;
+  content: string;
+  created_at: string;
+}
+
+// All 18 named agents
 export type AgentKey =
-  // Orchestrators
-  | "axel"   // Research Orchestrator
-  | "saga"   // Creative Orchestrator
-  // Research
-  | "finn"   // Signal Collector
-  | "nora"   // Insight Builder
-  // Creative
-  | "hugo"   // Art Director
-  | "tuva"   // Copywriter
-  | "viggo"  // Creative Director
-  // Opposition
-  | "sigge"  // AI-Slop Filter
-  | "maja"   // Head of Marketing (client)
-  | "nils"   // The Janitor (common sense)
-  | "frida"  // The Journalist
-  | "isak"   // The Strategist
-  // Finance
-  | "tilde"  // CFO (client side)
-  | "otto"   // Account Director (agency)
-  // PR
-  | "ebbe"   // Earned Media Strategist
-  | "lova"   // Social & Influencer
-  | "felix"  // Experience Director
-  // Output
-  | "alba";  // Packager / Figma Agent
+  | "axel" | "saga"                                    // Orchestrators
+  | "finn" | "nora"                                    // Research
+  | "hugo" | "tuva" | "viggo"                         // Creative
+  | "sigge" | "maja" | "nils" | "frida" | "isak"      // Opposition
+  | "tilde" | "otto"                                   // Finance
+  | "ebbe" | "lova" | "felix"                         // PR
+  | "alba";                                            // Output
+
+// Streaming agent role (for SSE chunks)
+export type AgentRole =
+  | "finn" | "nora" | "axel"
+  | "saga" | "hugo" | "tuva" | "viggo"
+  | "sigge" | "maja" | "nils" | "frida" | "isak"
+  | "tilde" | "otto"
+  | "ebbe" | "lova" | "felix"
+  | "alba";
 
 export interface StreamChunk {
   role: AgentRole;

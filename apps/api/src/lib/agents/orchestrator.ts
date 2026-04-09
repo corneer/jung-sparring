@@ -17,13 +17,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { anthropic } from "@/lib/anthropic";
 import { parallelSearch, parallelDeepResearch, formatSearchResultsAsContext } from "@/lib/parallel";
-import {
-  researcherSystemPrompt,
-  plannerSystemPrompt,
-  creativeSystemPrompt,
-  filterSystemPrompt,
-  opponentSystemPrompt,
-} from "./prompts";
+import { loadAgentPrompt, getTemperature, getModel } from "./loader";
 import type { Client, Run, Signal, Insight, AgentRole } from "@jung/types";
 
 export interface StreamEvent {
@@ -72,6 +66,10 @@ async function executeTool(
   if (toolName === "parallel_search") {
     emit({ role, type: "delta", content: `\n🔍 Söker: "${toolInput.query}"...\n` });
     const results = await parallelSearch(toolInput.query);
+    if (results.length === 0) {
+      emit({ role, type: "delta", content: `⚠️ Inga sökresultat — fortsätter med träningsdata.\n\n` });
+      return "Inga externa sökresultat tillgängliga. Basera svaret på din kunskap.";
+    }
     const formatted = formatSearchResultsAsContext(results);
     emit({ role, type: "delta", content: `✓ ${results.length} resultat hittades.\n\n` });
     return formatted;
@@ -105,7 +103,7 @@ async function agentLoop(
 
   for (let i = 0; i < maxIterations; i++) {
     const response = await anthropic.messages.create({
-      model: role === "creative" ? "claude-sonnet-4-6" : "claude-opus-4-6",
+      model: getModel(),
       max_tokens: 4096,
       system: systemPrompt,
       tools: tools.length > 0 ? tools : undefined,
@@ -164,9 +162,9 @@ export async function runResearcher(
   emit: Emit
 ): Promise<string> {
   return agentLoop(
-    "researcher",
-    researcherSystemPrompt(client, run.topic),
-    `Analysera ämnet "${run.topic}" för klienten ${client.name}. Använd parallel_search för att hitta aktuella signaler. Gör minst 2–3 sökningar med olika vinklar.`,
+    "finn",
+    loadAgentPrompt("finn"),
+    `KUND: ${client.name} (${client.industry})\nKONKURRENTER: ${client.competitors.join(", ")}\nKÄRNFRÅGOR: ${client.core_questions.join(", ")}\n\nÄMNE: ${run.topic}\n\nAnvänd parallel_search för att hitta aktuella signaler. Gör minst 2–3 sökningar med olika vinklar.`,
     [parallelSearchTool],
     emit
   );
@@ -180,9 +178,9 @@ export async function runPlanner(
 ): Promise<string> {
   const signalText = signals.map((s) => s.content).join("\n\n---\n\n");
   return agentLoop(
-    "planner",
-    plannerSystemPrompt(client, run.topic),
-    `GODKÄNDA SIGNALER:\n${signalText}\n\nAnvänd parallel_deep_research för att fördjupa analysen och destillera starka insikter för ${client.name}.`,
+    "nora",
+    loadAgentPrompt("nora"),
+    `KUND: ${client.name} (${client.industry})\nÄMNE: ${run.topic}\n\nGODKÄNDA SIGNALER:\n${signalText}\n\nAnvänd parallel_deep_research för att fördjupa analysen och destillera starka insikter.`,
     [parallelDeepResearchTool],
     emit
   );
@@ -195,9 +193,9 @@ export async function runCreative(
 ): Promise<string> {
   const insightText = insights.map((i) => i.content).join("\n\n---\n\n");
   return agentLoop(
-    "creative",
-    creativeSystemPrompt(client),
-    `GODKÄNDA INSIKTER:\n${insightText}\n\nGenerera nu konkreta idéer.`,
+    "hugo",
+    loadAgentPrompt("hugo"),
+    `KUND: ${client.name} (${client.industry})\n\nGODKÄNDA INSIKTER:\n${insightText}\n\nGenerera nu konkreta visuella kreativa riktningar.`,
     [],
     emit
   );
@@ -211,18 +209,18 @@ export async function runEvaluation(
   const ideaText = ideas.map((i) => i.content).join("\n\n---\n\n");
   const insightText = insights.map((i) => i.content).join("\n\n---\n\n");
 
-  // Filter and Opponent run in parallel – each is its own agent loop
+  // Sigge (AI slop filter) and Isak (strategist) run in parallel
   const [filterOutput, opponentOutput] = await Promise.all([
     agentLoop(
-      "filter",
-      filterSystemPrompt(),
+      "sigge",
+      loadAgentPrompt("sigge"),
       `IDÉER ATT GRANSKA:\n${ideaText}`,
       [],
       emit
     ),
     agentLoop(
-      "opponent",
-      opponentSystemPrompt(),
+      "isak",
+      loadAgentPrompt("isak"),
       `INSIKTER:\n${insightText}\n\nIDÉER ATT UTMANA:\n${ideaText}`,
       [],
       emit

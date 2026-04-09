@@ -1,0 +1,83 @@
+.main {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 40px 24px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 32px;
+}
+
+.title {
+  font-size: 28px;
+  font-weight: 700;
+}
+
+.newBtn {
+  background: #fff;
+  color: #000;
+  padding: 10px 18px;
+  border-radius: 10px;
+  font-weight: 600;
+  font-size: 14px;
+  transition: opacity 0.15s;
+}
+.newBtn:hover { opacity: 0.85; }
+
+.empty {
+  color: var(--muted);
+  text-align: center;
+  margin-top: 80px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.cardBody {
+  padding: 20px;
+  flex: 1;
+}
+
+.cardTitle {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.cardSub {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.cardMeta {
+  color: var(--dim);
+  font-size: 12px;
+  margin-top: 8px;
+}
+
+.cardFooter {
+  border-top: 1px solid var(--border);
+  padding: 14px 20px;
+}
+
+.runBtn {
+  color: var(--muted);
+  font-size: 13px;
+  transition: color 0.15s;
+}
+.runBtn:hover { color: var(--text); }
