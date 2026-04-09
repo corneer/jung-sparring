@@ -65,12 +65,41 @@ export interface Evaluation {
 }
 
 // Streaming chunk types sent from API → client
+// Legacy roles (backward-compatible)
 export type AgentRole =
   | "researcher"
   | "planner"
   | "creative"
   | "filter"
   | "opponent";
+
+// Named agent keys — maps to /agents/**/*.md files
+export type AgentKey =
+  // Orchestrators
+  | "axel"   // Research Orchestrator
+  | "saga"   // Creative Orchestrator
+  // Research
+  | "finn"   // Signal Collector
+  | "nora"   // Insight Builder
+  // Creative
+  | "hugo"   // Art Director
+  | "tuva"   // Copywriter
+  | "viggo"  // Creative Director
+  // Opposition
+  | "sigge"  // AI-Slop Filter
+  | "maja"   // Head of Marketing (client)
+  | "nils"   // The Janitor (common sense)
+  | "frida"  // The Journalist
+  | "isak"   // The Strategist
+  // Finance
+  | "tilde"  // CFO (client side)
+  | "otto"   // Account Director (agency)
+  // PR
+  | "ebbe"   // Earned Media Strategist
+  | "lova"   // Social & Influencer
+  | "felix"  // Experience Director
+  // Output
+  | "alba";  // Packager / Figma Agent
 
 export interface StreamChunk {
   role: AgentRole;

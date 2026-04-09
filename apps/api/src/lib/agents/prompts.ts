@@ -1,4 +1,20 @@
 import type { Client } from "@jung/types";
+import { loadAgentPrompt } from "./loader";
+
+/**
+ * Returnerar systemprompten för en namngiven agent från /agents/*.md.
+ * Använd dessa i nya routes och orchestrators framöver.
+ *
+ * Exempel:
+ *   system: agentPrompt("hugo")    // Art Director
+ *   system: agentPrompt("sigge")   // AI-Slop Filter
+ *   system: agentPrompt("tilde")   // CFO (klientsida)
+ *   system: agentPrompt("ebbe")    // Earned Media Strategist
+ */
+export { loadAgentPrompt as agentPrompt };
+
+// ─── Legacy prompts (backward-compatible) ─────────────────────────────────────
+// Dessa används av befintliga routes. Migreras gradvis till agentPrompt().
 
 export function researcherSystemPrompt(client: Client, topic: string): string {
   return `Du är Researcher i ett kreativt strategiteam på en kommunikationsbyrå.
