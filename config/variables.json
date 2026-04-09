@@ -1,0 +1,18 @@
+{
+  "agency": {
+    "name": "Jung Relations",
+    "positioning": "Nordens mest kreativa byrå",
+    "language": "Swedish",
+    "tone": "Confident, sharp, no bullshit"
+  },
+  "pipeline": {
+    "max_ideas_per_round": 3,
+    "opposition_rounds": 1,
+    "output_format": "Figma-ready brief"
+  },
+  "agents": {
+    "model": "claude-sonnet-4-20250514",
+    "temperature_creative": 1.0,
+    "temperature_analytical": 0.3
+  }
+}
